@@ -2,14 +2,6 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Security.Claims;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using IdentityModel.Client;
 using IdentityServer4;
@@ -24,7 +16,16 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Security.Claims;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace IdentityServer.IntegrationTests.Common
 {
@@ -76,21 +77,25 @@ namespace IdentityServer.IntegrationTests.Common
 
         public void Initialize(string basePath = null, bool enableLogging = false)
         {
-            var builder = new WebHostBuilder();
-            builder.ConfigureServices(ConfigureServices);
-            builder.Configure(app=>
+            var builder = new HostBuilder();
+            builder.ConfigureWebHostDefaults(builder =>
             {
-                if (basePath != null)
+                builder.ConfigureServices(ConfigureServices);
+                builder.Configure(app =>
                 {
-                    app.Map(basePath, map =>
+                    if (basePath != null)
                     {
-                        ConfigureApp(map);
-                    });
-                }
-                else
-                {
-                    ConfigureApp(app);
-                }
+                        app.Map(basePath, map =>
+                        {
+                            ConfigureApp(map);
+                        });
+                    }
+                    else
+                    {
+                        ConfigureApp(app);
+                    }
+                });
+                builder.UseTestServer();
             });
 
             if (enableLogging)
@@ -98,9 +103,12 @@ namespace IdentityServer.IntegrationTests.Common
                 builder.ConfigureLogging((ctx, b) => b.AddConsole());
             }
 
-            Server = new TestServer(builder);
+            var host = builder.Build();
+            host.Start();
+
+            Server = host.GetTestServer();
             Handler = Server.CreateHandler();
-            
+
             BrowserClient = new BrowserClient(new BrowserHandler(Handler));
             BackChannelClient = new HttpClient(Handler);
         }
@@ -396,7 +404,7 @@ namespace IdentityServer.IntegrationTests.Common
         }
     }
 
-    public class MockExternalAuthenticationHandler : 
+    public class MockExternalAuthenticationHandler :
         IAuthenticationHandler,
         IAuthenticationSignInHandler,
         IAuthenticationRequestHandler
@@ -404,7 +412,7 @@ namespace IdentityServer.IntegrationTests.Common
         private readonly IHttpContextAccessor _httpContextAccessor;
         private HttpContext HttpContext => _httpContextAccessor.HttpContext;
 
-        public Func<HttpContext, Task<bool>> OnFederatedSignout = 
+        public Func<HttpContext, Task<bool>> OnFederatedSignout =
             async context =>
             {
                 await context.SignOutAsync();
